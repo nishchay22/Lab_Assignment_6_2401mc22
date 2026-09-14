@@ -1,0 +1,10 @@
+--- Banker's Algorithm Simulation ---
+Initial state is safe.
+Safe sequence: P1 P3 P4 P0 P2 
+
+--- Process P1 requesting resources: 1 0 2 ---
+Request granted safely.
+Safe sequence: P1 P3 P4 P0 P2 
+
+--- Process P4 requesting resources: 3 3 0 ---
+Request denied - would lead to unsafe state.

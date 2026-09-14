@@ -1,0 +1,7 @@
+--- Deadlock Detection using RAG ---
+
+Scenario 1: Testing with given Request and Allocation matrices
+No deadlock detected.
+
+Scenario 2: Inducing a circular wait deadlock (P1->P3, P3->P4, P4->P1)
+Deadlock detected! Cycle: P1 -> P3 -> P4 -> P1
