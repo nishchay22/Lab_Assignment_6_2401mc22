@@ -1,83 +1,62 @@
-#include "kernel/types.h"
-#include "user/user.h"
+#include "types.h"
+#include "stat.h"
+#include "user.h"
 
-// Simple semaphore implementation for xv6 simulation
-struct sem {
-    int value;
-    struct lock lock;
-};
-
-void sem_init(struct sem *s, int val) {
-    s->value = val;
-    s->lock.locked = 0;
-}
-
-void sem_wait(struct sem *s) {
-    while(1) {
-        acquire(&s->lock);
-        if (s->value > 0) {
-            s->value--;
-            release(&s->lock);
-            break;
-        }
-        release(&s->lock);
-        sleep(1);
-    }
-}
-
-void sem_post(struct sem *s) {
-    acquire(&s->lock);
-    s->value++;
-    release(&s->lock);
-}
-
-struct sem printer_sem; // 2 printers
-struct sem scanner_sem; // 1 scanner
-struct sem disk_sem;    // 2 disks
+// Resource semaphore IDs backed by xv6 kernel semaphores
+#define SEM_PRINTER 0 // 2 printers
+#define SEM_SCANNER 1 // 1 scanner
+#define SEM_DISK    2 // 2 disks
+#define SEM_PRINT   3 // Console output lock
 
 void process_task(int pid, int r1, int r2) {
-    for (int i = 0; i < 3; i++) { // 3 iterations
-        printf("Process P%d requesting resources (ordered)...\n", pid);
-        
-        // Resource ordering to avoid deadlock (0: printer, 1: scanner, 2: disk)
-        if (r1 < r2) {
-            if (r1 == 0) sem_wait(&printer_sem);
-            if (r1 == 1) sem_wait(&scanner_sem);
-            if (r2 == 1) sem_wait(&scanner_sem);
-            if (r2 == 2) sem_wait(&disk_sem);
-        } else {
-            if (r2 == 0) sem_wait(&printer_sem);
-            if (r2 == 1) sem_wait(&scanner_sem);
-            if (r1 == 1) sem_wait(&scanner_sem);
-            if (r1 == 2) sem_wait(&disk_sem);
-        }
-        
-        printf("Process P%d GRANTED resources, starting work...\n", pid);
+    int i;
+    int first  = (r1 < r2) ? r1 : r2;
+    int second = (r1 < r2) ? r2 : r1;
+
+    for (i = 0; i < 3; i++) { // 3 iterations
+        sem_wait(SEM_PRINT);
+        printf(1, "Process P%d requesting resources (ordered: R%d -> R%d)...\n", pid, first, second);
+        sem_post(SEM_PRINT);
+
+        // Acquire resources in strict global order: Printer (0) < Scanner (1) < Disk (2)
+        sem_wait(first);
+        sem_wait(second);
+
+        sem_wait(SEM_PRINT);
+        printf(1, "Process P%d GRANTED resources, starting work...\n", pid);
+        sem_post(SEM_PRINT);
+
         sleep(5); // Simulate work
-        
-        printf("Process P%d releasing resources...\n", pid);
-        if (r1 == 0 || r2 == 0) sem_post(&printer_sem);
-        if (r1 == 1 || r2 == 1) sem_post(&scanner_sem);
-        if (r1 == 2 || r2 == 2) sem_post(&disk_sem);
+
+        sem_wait(SEM_PRINT);
+        printf(1, "Process P%d releasing resources...\n", pid);
+        sem_post(SEM_PRINT);
+
+        sem_post(second);
+        sem_post(first);
     }
 }
 
 int main(int argc, char *argv[]) {
-    sem_init(&printer_sem, 2);
-    sem_init(&scanner_sem, 1);
-    sem_init(&disk_sem, 2);
-    
-    for (int i = 0; i < 5; i++) {
+    int i;
+    sem_init(SEM_PRINTER, 2);
+    sem_init(SEM_SCANNER, 1);
+    sem_init(SEM_DISK,    2);
+    sem_init(SEM_PRINT,   1);
+
+    int needs[5][2] = { {0, 1}, {1, 2}, {0, 2}, {0, 1}, {1, 2} };
+
+    for (i = 0; i < 5; i++) {
         int pid = fork();
         if (pid == 0) {
-            // Assign different needs for each process
-            int needs[5][2] = { {0, 1}, {1, 2}, {0, 2}, {0, 1}, {1, 2} }; 
             process_task(i, needs[i][0], needs[i][1]);
-            exit(0);
+            exit();
         }
     }
-    
-    for(int i = 0; i < 5; i++) wait(0);
-    printf("All processes completed successfully.\n");
-    return 0;
+
+    for (i = 0; i < 5; i++)
+        wait();
+
+    printf(1, "All processes completed successfully.\n");
+    exit();
 }
